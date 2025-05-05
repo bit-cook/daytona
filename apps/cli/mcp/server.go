@@ -27,10 +27,6 @@ func NewDaytonaMCPServer() *DaytonaMCPServer {
 	return s
 }
 
-func (s *DaytonaMCPServer) Start() error {
-	return server.ServeStdio(&s.MCPServer)
-}
-
 func (s *DaytonaMCPServer) addTools() {
 	createSandboxTool := mcp.NewTool("create_sandbox",
 		mcp.WithDescription("Create a new sandbox with Daytona"),
