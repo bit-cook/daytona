@@ -59,6 +59,10 @@ const configuration = {
     defaultBucket: process.env.S3_DEFAULT_BUCKET,
   },
   skipConnections: process.env.SKIP_CONNECTIONS === 'true',
+  encryption: {
+    key: process.env.ENCRYPTION_KEY,
+    salt: process.env.ENCRYPTION_SALT,
+  },
 }
 
 export { configuration }
