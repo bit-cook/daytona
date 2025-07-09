@@ -43,7 +43,7 @@ sandbox.git.clone(
     branch="develop"
 )
 
-```
+````
 </TabItem>
 <TabItem label="TypeScript" icon="seti:typescript">
 ```typescript
@@ -69,7 +69,7 @@ await sandbox.git.clone(
     "workspace/repo",
     "develop"
 );
-```
+````
 
 </TabItem>
 </Tabs>
@@ -95,7 +95,7 @@ response = sandbox.git.branches("workspace/repo")
 for branch in response.branches:
     print(f"Branch: {branch}")
 
-```
+````
 </TabItem>
 <TabItem label="TypeScript" icon="seti:typescript">
 ```typescript
@@ -113,7 +113,7 @@ const response = await sandbox.git.branches("workspace/repo");
 response.branches.forEach(branch => {
     console.log(`Branch: ${branch}`);
 });
-```
+````
 
 </TabItem>
 </Tabs>
@@ -140,7 +140,7 @@ sandbox.git.checkout_branch("workspace/repo", "feature/new-feature")
 
 sandbox.git.delete_branch("workspace/repo", "feature/old-feature")
 
-```
+````
 </TabItem>
 <TabItem label="TypeScript" icon="seti:typescript">
 ```typescript
@@ -152,7 +152,7 @@ await sandbox.git.checkoutBranch("workspace/repo", "feature/new-feature");
 
 // Delete branch
 await sandbox.git.deleteBranch("workspace/repo", "feature/old-feature");
-```
+````
 
 </TabItem>
 </Tabs>
@@ -177,7 +177,7 @@ sandbox.git.add("workspace/repo", ["."])
 
 sandbox.git.commit("workspace/repo", "feat: add new feature", "John Doe", "john@example.com")
 
-```
+````
 </TabItem>
 <TabItem label="TypeScript" icon="seti:typescript">
 ```typescript
