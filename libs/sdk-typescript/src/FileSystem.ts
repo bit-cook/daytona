@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { Readable } from 'stream'
 import FormData from 'form-data'
-import Busboy from 'busboy'
+import busboy from 'busboy'
 import { DaytonaError } from './errors/DaytonaError'
 
 /**
@@ -244,7 +244,7 @@ export class FileSystem {
     const responseData = response.data as any
 
     await new Promise<void>((resolve, reject) => {
-      const bb = Busboy({
+      const bb = busboy({
         headers: response.headers as Record<string, string>,
         preservePath: true,
       })
