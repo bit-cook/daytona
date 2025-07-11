@@ -1333,7 +1333,7 @@ lsp_server = sandbox.create_lsp_server(
     path_to_project="workspace/project"
 )
 
-```
+
 ```typescript
 import { Daytona, LspLanguageId } from '@daytonaio/sdk'
 
@@ -2114,7 +2114,7 @@ for (const session of sessions) {
     console.log(`PID: ${session.id}, Commands: ${session.commands}`);
 }
 
-```
+
 
 
 ## Best Practices
