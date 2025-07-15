@@ -11,9 +11,9 @@ import (
 	"github.com/daytonaio/runner/cmd/runner/config"
 	"github.com/daytonaio/runner/pkg/api/dto"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/errdefs"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/errdefs"
 )
 
 func (d *DockerClient) getContainerConfigs(ctx context.Context, sandboxDto dto.CreateSandboxDTO, volumeMountPathBinds []string) (*container.Config, *container.HostConfig, *network.NetworkingConfig, error) {
@@ -42,16 +42,12 @@ func (d *DockerClient) getContainerCreateConfig(ctx context.Context, sandboxDto 
 		envVars = append(envVars, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	inspect, _, err := d.apiClient.ImageInspectWithRaw(ctx, sandboxDto.Snapshot)
+	imageInfo, _, err := d.apiClient.ImageInspectWithRaw(ctx, sandboxDto.Snapshot)
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to inspect image: %w", err)
-	}
-
-	if inspect.Config.WorkingDir == "" {
-		envVars = append(envVars, "DAYTONA_USER_HOME_AS_WORKDIR=true")
 	}
 
 	return &container.Config{
@@ -62,6 +58,7 @@ func (d *DockerClient) getContainerCreateConfig(ctx context.Context, sandboxDto 
 		Entrypoint:   sandboxDto.Entrypoint,
 		AttachStdout: true,
 		AttachStderr: true,
+		WorkingDir:   imageInfo.Config.WorkingDir,
 	}, nil
 }
 

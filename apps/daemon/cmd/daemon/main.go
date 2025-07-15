@@ -4,6 +4,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -18,20 +19,28 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const UseUserHomeAsWorkDir = "DAYTONA_USER_HOME_AS_WORKDIR"
+
 func main() {
 	c, err := config.GetConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	if os.Getenv("DAYTONA_USER_HOME_AS_WORKDIR") == "true" {
-		userHomeDir, err := os.UserHomeDir()
-		if err != nil {
-			panic(fmt.Errorf("failed to get user home directory: %w", err))
+	workdirFlag := flag.String("workdir", "", "optional; sets the working directory; defaults to the current directory; use "+UseUserHomeAsWorkDir+" to switch to the user's home directory")
+	flag.Parse()
+
+	if *workdirFlag != "" {
+		workdir := *workdirFlag
+		if workdir == UseUserHomeAsWorkDir {
+			workdir, err = os.UserHomeDir()
+			if err != nil {
+				panic(fmt.Errorf("failed to get user home directory: %w", err))
+			}
 		}
-		err = os.Chdir(userHomeDir)
+		err = os.Chdir(workdir)
 		if err != nil {
-			panic(fmt.Errorf("failed to change directory to home: %w", err))
+			panic(fmt.Errorf("failed to change working directory to %s: %w", workdir, err))
 		}
 	}
 
