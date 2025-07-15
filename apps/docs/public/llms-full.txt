@@ -1,5 +1,5 @@
 # Daytona Documentation v0.0.0-dev
-# Generated on: 2025-07-13
+# Generated on: 2025-07-15
 
 
 title: API Keys
@@ -755,13 +755,8 @@ exec_session_id = "python-app-session"
 sandbox.process.create_session(exec_session_id)
 
 sandbox.process.execute_session_command(exec_session_id, SessionExecuteRequest(
-<<<<<<< HEAD
-command="python app.py",
-var_async=True
-=======
     command="python /app.py",
     var_async=True
->>>>>>> 63bf6ad8 (fix(docs): revert formatting changes inside example code)
 ))
 
 # Get the preview link for the Flask app
@@ -1333,7 +1328,7 @@ lsp_server = sandbox.create_lsp_server(
     path_to_project="workspace/project"
 )
 
-
+```
 ```typescript
 import { Daytona, LspLanguageId } from '@daytonaio/sdk'
 
@@ -2114,8 +2109,7 @@ for (const session of sessions) {
     console.log(`PID: ${session.id}, Commands: ${session.commands}`);
 }
 
-
-
+```
 
 ## Best Practices
 
