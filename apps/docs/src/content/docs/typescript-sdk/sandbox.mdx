@@ -317,14 +317,14 @@ console.log(`Token: ${previewLink.token}`);
 #### getUserHomeDir()
 
 ```ts
-getUserRootDir(): Promise<string>
+getUserHomeDir(): Promise<string>
 ```
 
 Gets the user's home directory path for the logged in user inside the Sandbox.
 
 **Returns**:
 
-- `Promise<string>` - The absolute path to the Sandbox root directory for the logged in user
+- `Promise<string>` - The absolute path to the Sandbox user's home directory for the logged in user
 
 **Example:**
 
@@ -338,12 +338,12 @@ console.log(`Sandbox user home: ${userHomeDir}`);
 #### ~~getUserRootDir()~~
 
 ```ts
-getUserRootDir(): Promise<undefined | string>
+getUserRootDir(): Promise<string>
 ```
 
 **Returns**:
 
-- `Promise<undefined | string>`
+- `Promise<string>`
 
 ##### Deprecated
 
@@ -354,14 +354,14 @@ Use `getUserHomeDir` instead. This method will be removed in a future version.
 #### getWorkDir()
 
 ```ts
-getWorkDir(): Promise<undefined | string>
+getWorkDir(): Promise<string>
 ```
 
 Gets the working directory path inside the Sandbox.
 
 **Returns**:
 
-- `Promise<undefined | string>` - The absolute path to the Sandbox working directory. Uses the WORKDIR specified
+- `Promise<string>` - The absolute path to the Sandbox working directory. Uses the WORKDIR specified
     in the Dockerfile if present, or falling back to the user's home directory if not.
 
 **Example:**
