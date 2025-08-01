@@ -84,6 +84,7 @@ const configuration = {
   },
   cronTimeZone: process.env.CRON_TIMEZONE,
   maxConcurrentArchivesPerRunner: parseInt(process.env.MAX_CONCURRENT_ARCHIVES_PER_RUNNER || '6', 10),
+  organizationSandboxDefaultNetworkBlockAll: process.env.ORGANIZATION_SANDBOX_DEFAULT_NETWORK_BLOCK_ALL === 'true',
 }
 
 export { configuration }
