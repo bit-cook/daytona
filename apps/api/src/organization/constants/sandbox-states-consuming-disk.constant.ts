@@ -4,10 +4,10 @@
  */
 
 import { SandboxState } from '../../sandbox/enums/sandbox-state.enum'
-import { SANDBOX_USAGE_IGNORED_STATES } from './sandbox-usage-ignored-states.constant'
+import { SANDBOX_STATES_CONSUMING_COMPUTE } from './sandbox-states-consuming-compute.constant'
 
-export const SANDBOX_USAGE_INACTIVE_STATES: SandboxState[] = [
-  ...SANDBOX_USAGE_IGNORED_STATES,
+export const SANDBOX_STATES_CONSUMING_DISK: SandboxState[] = [
+  ...SANDBOX_STATES_CONSUMING_COMPUTE,
   SandboxState.STOPPED,
   SandboxState.ARCHIVING,
 ]

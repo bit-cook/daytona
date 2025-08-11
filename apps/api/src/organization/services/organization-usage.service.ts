@@ -9,8 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { InjectRedis } from '@nestjs-modules/ioredis'
 import { Redis } from 'ioredis'
 import { In, Not, Repository } from 'typeorm'
-import { SANDBOX_USAGE_IGNORED_STATES } from '../constants/sandbox-usage-ignored-states.constant'
-import { SANDBOX_USAGE_INACTIVE_STATES } from '../constants/sandbox-usage-inactive-states.constant'
+import { SANDBOX_STATES_CONSUMING_COMPUTE } from '../constants/sandbox-states-consuming-compute.constant'
+import { SANDBOX_STATES_CONSUMING_DISK } from '../constants/sandbox-states-consuming-disk.constant'
 import { SNAPSHOT_USAGE_IGNORED_STATES } from '../constants/snapshot-usage-ignored-states.constant'
 import { VOLUME_USAGE_IGNORED_STATES } from '../constants/volume-usage-ignored-states.constant'
 import { OrganizationUsageOverviewDto } from '../dto/organization-usage-overview.dto'
@@ -151,13 +151,13 @@ export class OrganizationUsageService {
     let memToSubtract = 0
     let diskToSubtract = 0
 
-    if (!SANDBOX_USAGE_IGNORED_STATES.includes(excludedSandbox.state)) {
-      diskToSubtract = excludedSandbox.disk
-    }
-
-    if (!SANDBOX_USAGE_INACTIVE_STATES.includes(excludedSandbox.state)) {
+    if (SANDBOX_STATES_CONSUMING_COMPUTE.includes(excludedSandbox.state)) {
       cpuToSubtract = excludedSandbox.cpu
       memToSubtract = excludedSandbox.mem
+    }
+
+    if (SANDBOX_STATES_CONSUMING_DISK.includes(excludedSandbox.state)) {
+      diskToSubtract = excludedSandbox.disk
     }
 
     return {
@@ -279,13 +279,13 @@ export class OrganizationUsageService {
     } = await this.sandboxRepository
       .createQueryBuilder('sandbox')
       .select([
-        'SUM(CASE WHEN sandbox.state NOT IN (:...inactiveStates) THEN sandbox.cpu ELSE 0 END) as used_cpu',
-        'SUM(CASE WHEN sandbox.state NOT IN (:...inactiveStates) THEN sandbox.mem ELSE 0 END) as used_mem',
-        'SUM(CASE WHEN sandbox.state NOT IN (:...ignoredStates) THEN sandbox.disk ELSE 0 END) as used_disk',
+        'SUM(CASE WHEN sandbox.state IN (:...statesConsumingCompute) THEN sandbox.cpu ELSE 0 END) as used_cpu',
+        'SUM(CASE WHEN sandbox.state IN (:...statesConsumingCompute) THEN sandbox.mem ELSE 0 END) as used_mem',
+        'SUM(CASE WHEN sandbox.state IN (:...statesConsumingDisk) THEN sandbox.disk ELSE 0 END) as used_disk',
       ])
       .where('sandbox.organizationId = :organizationId', { organizationId })
-      .setParameter('ignoredStates', SANDBOX_USAGE_IGNORED_STATES)
-      .setParameter('inactiveStates', SANDBOX_USAGE_INACTIVE_STATES)
+      .setParameter('statesConsumingCompute', SANDBOX_STATES_CONSUMING_COMPUTE)
+      .setParameter('statesConsumingDisk', SANDBOX_STATES_CONSUMING_DISK)
       .getRawOne()
 
     const cpuUsage = Number(sandboxUsageMetrics.used_cpu) || 0
@@ -463,21 +463,21 @@ export class OrganizationUsageService {
         event.sandbox.cpu,
         event.oldState,
         event.newState,
-        SANDBOX_USAGE_INACTIVE_STATES,
+        SANDBOX_STATES_CONSUMING_COMPUTE,
       )
 
       const memDelta = this.calculateQuotaUsageDelta(
         event.sandbox.mem,
         event.oldState,
         event.newState,
-        SANDBOX_USAGE_INACTIVE_STATES,
+        SANDBOX_STATES_CONSUMING_COMPUTE,
       )
 
       const diskDelta = this.calculateQuotaUsageDelta(
         event.sandbox.disk,
         event.oldState,
         event.newState,
-        SANDBOX_USAGE_IGNORED_STATES,
+        SANDBOX_STATES_CONSUMING_DISK,
       )
 
       if (cpuDelta !== 0) {
@@ -581,16 +581,16 @@ export class OrganizationUsageService {
     resourceAmount: number,
     oldState: TState,
     newState: TState,
-    nonConsumingStates: TState[],
+    statesConsumingResource: TState[],
   ): number {
-    const wasConsumingResources = !nonConsumingStates.includes(oldState)
-    const isConsumingResources = !nonConsumingStates.includes(newState)
+    const wasConsumingResource = statesConsumingResource.includes(oldState)
+    const isConsumingResource = statesConsumingResource.includes(newState)
 
-    if (!wasConsumingResources && isConsumingResources) {
+    if (!wasConsumingResource && isConsumingResource) {
       return resourceAmount
     }
 
-    if (wasConsumingResources && !isConsumingResources) {
+    if (wasConsumingResource && !isConsumingResource) {
       return -resourceAmount
     }
 
