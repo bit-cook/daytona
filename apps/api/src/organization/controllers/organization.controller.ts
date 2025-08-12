@@ -275,7 +275,7 @@ export class OrganizationController {
     description: 'Organization ID',
     type: 'string',
   })
-  @UseGuards(AuthGuard('jwt'), OrganizationActionGuard)
+  @UseGuards(CombinedAuthGuard, OrganizationActionGuard)
   async getUsageOverview(@Param('organizationId') organizationId: string): Promise<OrganizationUsageOverviewDto> {
     return this.organizationUsageService.getUsageOverview(organizationId)
   }

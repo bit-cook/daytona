@@ -14,7 +14,11 @@ import { SANDBOX_STATES_CONSUMING_DISK } from '../constants/sandbox-states-consu
 import { SNAPSHOT_USAGE_IGNORED_STATES } from '../constants/snapshot-usage-ignored-states.constant'
 import { VOLUME_USAGE_IGNORED_STATES } from '../constants/volume-usage-ignored-states.constant'
 import { OrganizationUsageOverviewDto } from '../dto/organization-usage-overview.dto'
-import { SandboxUsageOverviewInternalDto } from '../dto/sandbox-usage-overview-internal.dto'
+import {
+  SandboxPendingUsageOverviewInternalDto,
+  SandboxUsageOverviewInternalDto,
+  SandboxUsageOverviewWithPendingInternalDto,
+} from '../dto/sandbox-usage-overview-internal.dto'
 import { SnapshotUsageOverviewInternalDto } from '../dto/snapshot-usage-overview-internal.dto'
 import { VolumeUsageOverviewInternalDto } from '../dto/volume-usage-overview-internal.dto'
 import { Organization } from '../entities/organization.entity'
@@ -41,9 +45,14 @@ import { VolumeStateUpdatedEvent } from '../../sandbox/events/volume-state-updat
 export class OrganizationUsageService {
   private readonly logger = new Logger(OrganizationUsageService.name)
 
-  private readonly CACHE_TTL_SECONDS = 10
+  /**
+   * Time-to-live for cached quota usage values
+   */
+  private readonly CACHE_TTL_SECONDS = 60
 
-  // cache is considered stale if it was last populated from db more than CACHE_MAX_AGE_MS ago
+  /**
+   * Cache is considered stale if it was last populated from db more than CACHE_MAX_AGE_MS ago
+   */
   private readonly CACHE_MAX_AGE_MS = 60 * 60 * 1000
 
   constructor(
@@ -59,8 +68,14 @@ export class OrganizationUsageService {
     private readonly redisLockProvider: RedisLockProvider,
   ) {}
 
-  // 1. public methods for total/sandbox/snapshot/volume usage overviews
+  // ===== PUBLIC METHODS FOR GETTING TOTAL/SANDBOX/SNAPSHOT/VOLUME USAGE OVERVIEWS =====
 
+  /**
+   * Get the usage overview for all quotas of an organization.
+   *
+   * @param organizationId
+   * @param organization - Provide the organization entity to avoid fetching it from the database (optional)
+   */
   async getUsageOverview(organizationId: string, organization?: Organization): Promise<OrganizationUsageOverviewDto> {
     if (organization && organization.id !== organizationId) {
       throw new BadRequestException('Organization ID mismatch')
@@ -90,6 +105,12 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Get the usage overview for all sandbox quotas of an organization.
+   *
+   * @param organizationId
+   * @param excludeSandboxId - If provided, the usage overview will be returned without the usage of the sandbox with the given ID
+   */
   async getSandboxUsageOverview(
     organizationId: string,
     excludeSandboxId?: string,
@@ -135,6 +156,12 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Exclude the usage of a sandbox from the usage overview.
+   *
+   * @param usageOverview
+   * @param excludeSandboxId
+   */
   private async excludeSandboxFromUsageOverview(
     usageOverview: SandboxUsageOverviewInternalDto,
     excludeSandboxId: string,
@@ -168,6 +195,11 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Get the usage overview for all snapshot quotas of an organization.
+   *
+   * @param organizationId
+   */
   async getSnapshotUsageOverview(organizationId: string): Promise<SnapshotUsageOverviewInternalDto> {
     let cachedUsageOverview = await this.getCachedSnapshotUsageOverview(organizationId)
 
@@ -196,6 +228,11 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Get the usage overview for all volume quotas of an organization.
+   *
+   * @param organizationId
+   */
   async getVolumeUsageOverview(organizationId: string): Promise<VolumeUsageOverviewInternalDto> {
     let cachedUsageOverview = await this.getCachedVolumeUsageOverview(organizationId)
 
@@ -224,8 +261,224 @@ export class OrganizationUsageService {
     }
   }
 
-  // 2. helpers for getting sandbox/snapshot/volume usage overviews from cache
+  // ================= TEST =========================
 
+  /**
+   * Get the current and pending usage overview for all sandbox quotas of an organization.
+   *
+   * @param organizationId
+   * @param excludeSandboxId - If provided, the usage overview will be returned without the usage of the sandbox with the given ID
+   */
+  async getSandboxUsageOverviewWithPending(
+    organizationId: string,
+    excludeSandboxId?: string,
+  ): Promise<SandboxUsageOverviewWithPendingInternalDto> {
+    let cachedUsageOverview = await this.getCachedSandboxUsageOverviewWithPending(organizationId)
+
+    // cache hit
+    if (cachedUsageOverview) {
+      if (excludeSandboxId) {
+        return await this.excludeSandboxFromUsageOverviewWithPending(cachedUsageOverview, excludeSandboxId)
+      }
+
+      return cachedUsageOverview
+    }
+
+    // cache miss, wait for lock
+    const lockKey = `org:${organizationId}:fetch-sandbox-usage-from-db`
+    await this.redisLockProvider.waitForLock(lockKey, 60)
+
+    try {
+      // check if cache was updated while waiting for lock
+      cachedUsageOverview = await this.getCachedSandboxUsageOverviewWithPending(organizationId)
+
+      // cache hit
+      if (cachedUsageOverview) {
+        if (excludeSandboxId) {
+          return await this.excludeSandboxFromUsageOverviewWithPending(cachedUsageOverview, excludeSandboxId)
+        }
+
+        return cachedUsageOverview
+      }
+
+      // cache miss, fetch from db
+      const usageOverview = await this.fetchSandboxUsageFromDb(organizationId)
+
+      // Get pending usage separately since it's not stored in DB
+      const pendingUsageOverview = await this.getCachedSandboxPendingUsageOverview(organizationId)
+
+      const combinedUsageOverview: SandboxUsageOverviewWithPendingInternalDto = {
+        ...usageOverview,
+        ...pendingUsageOverview,
+      }
+
+      if (excludeSandboxId) {
+        return await this.excludeSandboxFromUsageOverviewWithPending(combinedUsageOverview, excludeSandboxId)
+      }
+
+      return combinedUsageOverview
+    } finally {
+      await this.redisLockProvider.unlock(lockKey)
+    }
+  }
+
+  /**
+   * Get the cached usage overview for all sandbox quotas of an organization, including pending usage.
+   * Fetches both current and pending usage atomically with a single Lua script.
+   *
+   * @param organizationId
+   */
+  private async getCachedSandboxUsageOverviewWithPending(
+    organizationId: string,
+  ): Promise<SandboxUsageOverviewWithPendingInternalDto | null> {
+    const script = `
+    return {
+      redis.call("GET", KEYS[1]),
+      redis.call("GET", KEYS[2]),
+      redis.call("GET", KEYS[3]),
+      redis.call("GET", KEYS[4]),
+      redis.call("GET", KEYS[5]),
+      redis.call("GET", KEYS[6])
+    }
+  `
+
+    const result = (await this.redis.eval(
+      script,
+      6,
+      this.getQuotaUsageCacheKey(organizationId, 'cpu'),
+      this.getQuotaUsageCacheKey(organizationId, 'memory'),
+      this.getQuotaUsageCacheKey(organizationId, 'disk'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'cpu'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'memory'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'disk'),
+    )) as (string | null)[]
+
+    const [cpuUsage, memoryUsage, diskUsage, pendingCpuUsage, pendingMemoryUsage, pendingDiskUsage] = result
+
+    // If any current usage is null, consider it a cache miss
+    if (cpuUsage === null || memoryUsage === null || diskUsage === null) {
+      return null
+    }
+
+    // Check cache staleness for current usage
+    const resourceType = getResourceTypeFromQuota('cpu') // 'sandbox' resource type
+    const isStale = await this.isCacheStale(organizationId, resourceType)
+
+    if (isStale) {
+      return null
+    }
+
+    // Parse and validate current usage values
+    const parsedCpuUsage = Number(cpuUsage)
+    const parsedMemoryUsage = Number(memoryUsage)
+    const parsedDiskUsage = Number(diskUsage)
+
+    if (
+      isNaN(parsedCpuUsage) ||
+      parsedCpuUsage < 0 ||
+      isNaN(parsedMemoryUsage) ||
+      parsedMemoryUsage < 0 ||
+      isNaN(parsedDiskUsage) ||
+      parsedDiskUsage < 0
+    ) {
+      return null
+    }
+
+    // Parse pending usage values (null is acceptable)
+    const parsedPendingCpuUsage = pendingCpuUsage ? Number(pendingCpuUsage) : null
+    const parsedPendingMemoryUsage = pendingMemoryUsage ? Number(pendingMemoryUsage) : null
+    const parsedPendingDiskUsage = pendingDiskUsage ? Number(pendingDiskUsage) : null
+
+    // Validate pending usage values if they exist
+    const validPendingCpuUsage =
+      parsedPendingCpuUsage !== null && !isNaN(parsedPendingCpuUsage) && parsedPendingCpuUsage >= 0
+        ? parsedPendingCpuUsage
+        : null
+    const validPendingMemoryUsage =
+      parsedPendingMemoryUsage !== null && !isNaN(parsedPendingMemoryUsage) && parsedPendingMemoryUsage >= 0
+        ? parsedPendingMemoryUsage
+        : null
+    const validPendingDiskUsage =
+      parsedPendingDiskUsage !== null && !isNaN(parsedPendingDiskUsage) && parsedPendingDiskUsage >= 0
+        ? parsedPendingDiskUsage
+        : null
+
+    return {
+      currentCpuUsage: parsedCpuUsage,
+      currentMemoryUsage: parsedMemoryUsage,
+      currentDiskUsage: parsedDiskUsage,
+      pendingCpuUsage: validPendingCpuUsage,
+      pendingMemoryUsage: validPendingMemoryUsage,
+      pendingDiskUsage: validPendingDiskUsage,
+    }
+  }
+
+  /**
+   * Get the cached pending usage overview for all sandbox quotas of an organization.
+   *
+   * @param organizationId
+   */
+  private async getCachedSandboxPendingUsageOverview(
+    organizationId: string,
+  ): Promise<SandboxPendingUsageOverviewInternalDto> {
+    const pendingCpuUsage = await this.getQuotaPendingUsage(organizationId, 'cpu')
+    const pendingMemoryUsage = await this.getQuotaPendingUsage(organizationId, 'memory')
+    const pendingDiskUsage = await this.getQuotaPendingUsage(organizationId, 'disk')
+
+    return {
+      pendingCpuUsage,
+      pendingMemoryUsage,
+      pendingDiskUsage,
+    }
+  }
+
+  /**
+   * Exclude the usage of a sandbox from the usage overview with pending.
+   *
+   * @param usageOverview
+   * @param excludeSandboxId
+   */
+  private async excludeSandboxFromUsageOverviewWithPending(
+    usageOverview: SandboxUsageOverviewWithPendingInternalDto,
+    excludeSandboxId: string,
+  ): Promise<SandboxUsageOverviewWithPendingInternalDto> {
+    const excludedSandbox = await this.sandboxRepository.findOne({
+      where: { id: excludeSandboxId },
+    })
+
+    if (!excludedSandbox) {
+      return usageOverview
+    }
+
+    let cpuToSubtract = 0
+    let memToSubtract = 0
+    let diskToSubtract = 0
+
+    if (SANDBOX_STATES_CONSUMING_COMPUTE.includes(excludedSandbox.state)) {
+      cpuToSubtract = excludedSandbox.cpu
+      memToSubtract = excludedSandbox.mem
+    }
+
+    if (SANDBOX_STATES_CONSUMING_DISK.includes(excludedSandbox.state)) {
+      diskToSubtract = excludedSandbox.disk
+    }
+
+    return {
+      ...usageOverview,
+      currentCpuUsage: Math.max(0, usageOverview.currentCpuUsage - cpuToSubtract),
+      currentMemoryUsage: Math.max(0, usageOverview.currentMemoryUsage - memToSubtract),
+      currentDiskUsage: Math.max(0, usageOverview.currentDiskUsage - diskToSubtract),
+      // Pending usage is not affected by exclusions
+    }
+  }
+
+  // ===== PRIVATE HELPERS FOR GETTING SANDBOX/SNAPSHOT/VOLUME USAGE OVERVIEWS FROM CACHE =====
+
+  /**
+   * Get the cached usage overview for all sandbox quotas of an organization.
+   *
+   * @param organizationId
+   */
   private async getCachedSandboxUsageOverview(organizationId: string): Promise<SandboxUsageOverviewInternalDto | null> {
     const cpuUsage = await this.getQuotaUsageCachedValue(organizationId, 'cpu')
     const memoryUsage = await this.getQuotaUsageCachedValue(organizationId, 'memory')
@@ -235,13 +488,34 @@ export class OrganizationUsageService {
       return null
     }
 
+    const script = `
+      return {
+        redis.call("GET", KEYS[1]),
+        redis.call("GET", KEYS[2]),
+        redis.call("GET", KEYS[3])
+      }
+    `
+
+    const result = await this.redis.eval(
+      script,
+      3,
+      this.getQuotaUsageCacheKey(organizationId, 'cpu'),
+      this.getQuotaUsageCacheKey(organizationId, 'memory'),
+      this.getQuotaUsageCacheKey(organizationId, 'disk'),
+    )
+
     return {
-      currentCpuUsage: cpuUsage,
-      currentMemoryUsage: memoryUsage,
-      currentDiskUsage: diskUsage,
+      currentCpuUsage: result[0],
+      currentMemoryUsage: result[1],
+      currentDiskUsage: result[2],
     }
   }
 
+  /**
+   * Get the cached usage overview for all snapshot quotas of an organization.
+   *
+   * @param organizationId
+   */
   private async getCachedSnapshotUsageOverview(
     organizationId: string,
   ): Promise<SnapshotUsageOverviewInternalDto | null> {
@@ -256,6 +530,11 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Get the cached usage overview for all volume quotas of an organization.
+   *
+   * @param organizationId
+   */
   private async getCachedVolumeUsageOverview(organizationId: string): Promise<VolumeUsageOverviewInternalDto | null> {
     const volumeUsage = await this.getQuotaUsageCachedValue(organizationId, 'volume_count')
 
@@ -268,9 +547,14 @@ export class OrganizationUsageService {
     }
   }
 
-  // 3. helpers for fetching sandbox/snapshot/volume usage overviews from db and caching them
+  // ===== PRIVATE HELPERS FOR FETCHING SANDBOX/SNAPSHOT/VOLUME USAGE OVERVIEWS FROM DB AND CACHING THEM =====
 
-  private async fetchSandboxUsageFromDb(organizationId: string): Promise<SandboxUsageOverviewInternalDto> {
+  /**
+   * Fetch the usage overview for all sandbox quotas of an organization from the database and cache the results.
+   *
+   * @param organizationId
+   */
+  async fetchSandboxUsageFromDb(organizationId: string): Promise<SandboxUsageOverviewInternalDto> {
     // fetch from db
     const sandboxUsageMetrics: {
       used_cpu: number
@@ -313,6 +597,11 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Fetch the usage overview for all snapshot quotas of an organization from the database and cache the results.
+   *
+   * @param organizationId
+   */
   private async fetchSnapshotUsageFromDb(organizationId: string): Promise<SnapshotUsageOverviewInternalDto> {
     // fetch from db
     const snapshotUsage = await this.snapshotRepository.count({
@@ -333,6 +622,11 @@ export class OrganizationUsageService {
     }
   }
 
+  /**
+   * Fetch the usage overview for all volume quotas of an organization from the database and cache the results.
+   *
+   * @param organizationId
+   */
   private async fetchVolumeUsageFromDb(organizationId: string): Promise<VolumeUsageOverviewInternalDto> {
     // fetch from db
     const volumeUsage = await this.volumeRepository.count({
@@ -353,12 +647,25 @@ export class OrganizationUsageService {
     }
   }
 
-  // 4. helpers for cached quota usage values
+  // ===== PRIVATE HELPERS FOR CACHED QUOTA USAGE VALUES =====
 
+  /**
+   * Get the cache key for a quota usage value.
+   *
+   * @param organizationId
+   * @param quotaType
+   */
   private getQuotaUsageCacheKey(organizationId: string, quotaType: OrganizationUsageQuotaType): string {
     return `org:${organizationId}:quota:${quotaType}:usage`
   }
 
+  /**
+   * Get the cached usage value for a quota of an organization.
+   *
+   * @param organizationId
+   * @param quotaType
+   * @returns The cached value for the quota usage, or `null` if the cache is not present or the value is not a non-negative number
+   */
   private async getQuotaUsageCachedValue(
     organizationId: string,
     quotaType: OrganizationUsageQuotaType,
@@ -386,28 +693,289 @@ export class OrganizationUsageService {
     return parsedValue
   }
 
+  /**
+   * Updates the quota usage in the cache. If cache is not present, this method is a no-op.
+   *
+   * If the corresponding quota type has pending usage in the cache and the delta is positive, the pending usage is decremented accordingly.
+   *
+   * @param organizationId
+   * @param quotaType
+   * @param delta
+   */
   private async updateQuotaUsage(
     organizationId: string,
     quotaType: OrganizationUsageQuotaType,
     delta: number,
   ): Promise<void> {
-    // must be no-op if cache not present
     const script = `
-    if redis.call("EXISTS", KEYS[1]) == 1 then
-      redis.call("INCRBY", KEYS[1], ARGV[1])
-      redis.call("EXPIRE", KEYS[1], ARGV[2])
-    end
-  `
+      local cacheKey = KEYS[1]
+      local pendingCacheKey = KEYS[2]
+      local delta = tonumber(ARGV[1])
+      local ttl = tonumber(ARGV[2])
+
+      if redis.call("EXISTS", cacheKey) == 1 then
+        redis.call("INCRBY", cacheKey, delta)
+        redis.call("EXPIRE", cacheKey, ttl)
+      end
+      
+      local pending = tonumber(redis.call("GET", pendingCacheKey))
+      if pending and tonumber(pending) > 0 and delta > 0 then
+        redis.call("DECRBY", pendingCacheKey, delta)
+      end
+
+      return {
+        redis.call("GET", cacheKey),
+        redis.call("GET", pendingCacheKey)
+      }
+    `
+
     const cacheKey = this.getQuotaUsageCacheKey(organizationId, quotaType)
-    await this.redis.eval(script, 1, cacheKey, delta.toString(), this.CACHE_TTL_SECONDS.toString())
+    const pendingCacheKey = this.getPendingQuotaUsageCacheKey(organizationId, quotaType)
+
+    const result = await this.redis.eval(
+      script,
+      2,
+      cacheKey,
+      pendingCacheKey,
+      delta.toString(),
+      this.CACHE_TTL_SECONDS.toString(),
+    )
+
+    this.logger.log(`=== updateQuotaUsage -> result: ${result}`)
   }
 
-  // 5. helpers for cache staleness
+  // ===== HELPERS FOR PENDING QUOTA USAGE =====
 
+  /**
+   * Get the cache key for pending usage of an organization's quota.
+   *
+   * @param organizationId
+   * @param quotaType
+   */
+  private getPendingQuotaUsageCacheKey(organizationId: string, quotaType: OrganizationUsageQuotaType): string {
+    return `org:${organizationId}:pending-${quotaType}`
+  }
+
+  /**
+   * Get the pending usage for a quota of an organization.
+   *
+   * @param organizationId
+   * @param quotaType
+   * @returns The pending usage for the quota, or `null` if the cache is not present or the value is not a non-negative number
+   */
+  async getQuotaPendingUsage(organizationId: string, quotaType: OrganizationUsageQuotaType): Promise<number | null> {
+    const cacheKey = this.getPendingQuotaUsageCacheKey(organizationId, quotaType)
+    const cachedData = await this.redis.get(cacheKey)
+
+    if (!cachedData) {
+      return null
+    }
+
+    // must be a non-negative number
+    const parsedValue = Number(cachedData)
+    if (isNaN(parsedValue) || parsedValue < 0) {
+      return null
+    }
+
+    return parsedValue
+  }
+
+  /**
+   * Increments the pending usage for sandbox quotas in an organization.
+   *
+   * Pending usage is used to protect against race conditions to prevent quota abuse.
+   *
+   * If a user action will result in increased quota usage, we will first increment the pending usage.
+   *
+   * When the user action is complete, this pending usage will be transfered to the actual usage.
+   *
+   * As a safeguard, an expiration time is set on the pending usage cache to prevent lockout for new operations.
+   *
+   * @param organizationId
+   * @param cpu - The amount of CPU to increment.
+   * @param memory - The amount of memory to increment.
+   * @param disk - The amount of disk to increment.
+   * @param excludeSandboxId - If provided, pending usage will be incremented only for quotas that are not consumed by the sandbox in its current state.
+   * @returns an object with the boolean values indicating if the pending usage was incremented for each quota type
+   */
+  async incrementPendingSandboxUsage(
+    organizationId: string,
+    cpu: number,
+    memory: number,
+    disk: number,
+    excludeSandboxId?: string,
+  ): Promise<{
+    cpuIncremented: boolean
+    memoryIncremented: boolean
+    diskIncremented: boolean
+  }> {
+    // determine for which quota types we should increment the pending usage
+    let shouldIncrementCpu = true
+    let shouldIncrementMemory = true
+    let shouldIncrementDisk = true
+
+    if (excludeSandboxId) {
+      const excludedSandbox = await this.sandboxRepository.findOne({
+        where: { id: excludeSandboxId },
+      })
+
+      if (excludedSandbox) {
+        if (SANDBOX_STATES_CONSUMING_COMPUTE.includes(excludedSandbox.state)) {
+          shouldIncrementCpu = false
+          shouldIncrementMemory = false
+        }
+
+        if (SANDBOX_STATES_CONSUMING_DISK.includes(excludedSandbox.state)) {
+          shouldIncrementDisk = false
+        }
+      }
+    }
+
+    // increment the pending usage for necessary quota types
+    const script = `
+      local cpuKey = KEYS[1]
+      local memoryKey = KEYS[2]
+      local diskKey = KEYS[3]
+
+      local shouldIncrementCpu = ARGV[1] == "true"
+      local shouldIncrementMemory = ARGV[2] == "true"
+      local shouldIncrementDisk = ARGV[3] == "true"
+
+      local cpuIncrement = tonumber(ARGV[4])
+      local memoryIncrement = tonumber(ARGV[5])
+      local diskIncrement = tonumber(ARGV[6])
+
+      local ttl = tonumber(ARGV[7])
+    
+      if shouldIncrementCpu then
+        redis.call("INCRBY", cpuKey, cpuIncrement)
+        redis.call("EXPIRE", cpuKey, ttl)
+      end
+
+      if shouldIncrementMemory then
+        redis.call("INCRBY", memoryKey, memoryIncrement)
+        redis.call("EXPIRE", memoryKey, ttl)
+      end
+
+      if shouldIncrementDisk then
+        redis.call("INCRBY", diskKey, diskIncrement)
+        redis.call("EXPIRE", diskKey, ttl)
+      end
+
+      return {
+        redis.call("GET", cpuKey),
+        redis.call("GET", memoryKey),
+        redis.call("GET", diskKey)
+      }
+    `
+
+    const result = await this.redis.eval(
+      script,
+      3,
+      this.getPendingQuotaUsageCacheKey(organizationId, 'cpu'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'memory'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'disk'),
+      shouldIncrementCpu.toString(),
+      shouldIncrementMemory.toString(),
+      shouldIncrementDisk.toString(),
+      cpu.toString(),
+      memory.toString(),
+      disk.toString(),
+      this.CACHE_TTL_SECONDS.toString(),
+    )
+
+    //this.logger.warn(`+++ incrementPendingSandboxUsage -> result: ${result}`)
+
+    return {
+      cpuIncremented: shouldIncrementCpu,
+      memoryIncremented: shouldIncrementMemory,
+      diskIncremented: shouldIncrementDisk,
+    }
+  }
+
+  /**
+   * Decrements the pending usage for sandbox quotas in an organization.
+   *
+   * Use this method to roll back pending usage after incrementing it for an action that was subsequently rejected.
+   *
+   * Pending usage is used to protect against race conditions to prevent quota abuse.
+   *
+   * If a user action will result in increased quota usage, we will first increment the pending usage.
+   *
+   * When the user action is complete, this pending usage will be transfered to the actual usage.
+   *
+   * @param organizationId
+   * @param cpu - If provided, the amount of CPU to decrement.
+   * @param memory - If provided, the amount of memory to decrement.
+   * @param disk - If provided, the amount of disk to decrement.
+   */
+  async decrementPendingSandboxUsage(
+    organizationId: string,
+    cpu?: number,
+    memory?: number,
+    disk?: number,
+  ): Promise<void> {
+    // decrement the pending usage for necessary quota types
+    const script = `
+      local cpuKey = KEYS[1]
+      local memoryKey = KEYS[2] 
+      local diskKey = KEYS[3]
+
+      local cpuDecrement = tonumber(ARGV[1])
+      local memoryDecrement = tonumber(ARGV[2])
+      local diskDecrement = tonumber(ARGV[3])
+      
+      if cpuDecrement then
+        redis.call("DECRBY", cpuKey, cpuDecrement)
+      end
+
+      if memoryDecrement then
+        redis.call("DECRBY", memoryKey, memoryDecrement)
+      end
+
+      if diskDecrement then
+        redis.call("DECRBY", diskKey, diskDecrement)
+      end
+
+      return {
+        redis.call("GET", cpuKey),
+        redis.call("GET", memoryKey),
+        redis.call("GET", diskKey)
+      }
+    `
+
+    const result = await this.redis.eval(
+      script,
+      3,
+      this.getPendingQuotaUsageCacheKey(organizationId, 'cpu'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'memory'),
+      this.getPendingQuotaUsageCacheKey(organizationId, 'disk'),
+      cpu?.toString() ?? '0',
+      memory?.toString() ?? '0',
+      disk?.toString() ?? '0',
+    )
+
+    //this.logger.warn(`--- decrementPendingSandboxUsage -> result: ${result}`)
+  }
+
+  // ===== PRIVATE HELPERS FOR QUOTA USAGE CACHE STALENESS =====
+
+  /**
+   * Get the cache key for the staleness of the cached usage of an organization's resource quotas.
+   *
+   * @param organizationId
+   * @param resourceType
+   */
   private getCacheStalenessKey(organizationId: string, resourceType: OrganizationUsageResourceType): string {
     return `org:${organizationId}:resource:${resourceType}:usage:fetched_at`
   }
 
+  /**
+   * Reset the staleness of the cached usage of an organization's resource quotas.
+   *
+   * @param organizationId
+   * @param resourceType
+   */
   private async resetCacheStaleness(
     organizationId: string,
     resourceType: OrganizationUsageResourceType,
@@ -416,6 +984,13 @@ export class OrganizationUsageService {
     await this.redis.set(cacheKey, Date.now())
   }
 
+  /**
+   * Check if the cached usage of an organization's resource quotas is stale.
+   *
+   * @param organizationId
+   * @param resourceType
+   * @returns `true` if the cached usage is stale, `false` otherwise
+   */
   private async isCacheStale(organizationId: string, resourceType: OrganizationUsageResourceType): Promise<boolean> {
     const cacheKey = this.getCacheStalenessKey(organizationId, resourceType)
     const cachedData = await this.redis.get(cacheKey)
@@ -432,7 +1007,7 @@ export class OrganizationUsageService {
     return Date.now() - lastFetchedAtTimestamp > this.CACHE_MAX_AGE_MS
   }
 
-  // 6. event handlers for updating quota usage in cache
+  // ===== EVENT HANDLERS FOR UPDATING QUOTA USAGE IN CACHE =====
 
   @OnEvent(SandboxEvents.CREATED)
   async handleSandboxCreated(event: SandboxCreatedEvent) {

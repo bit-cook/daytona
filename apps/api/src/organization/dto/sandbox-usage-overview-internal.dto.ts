@@ -8,3 +8,12 @@ export type SandboxUsageOverviewInternalDto = {
   currentMemoryUsage: number
   currentDiskUsage: number
 }
+
+export type SandboxPendingUsageOverviewInternalDto = {
+  pendingCpuUsage: number | null
+  pendingMemoryUsage: number | null
+  pendingDiskUsage: number | null
+}
+
+export type SandboxUsageOverviewWithPendingInternalDto = SandboxUsageOverviewInternalDto &
+  SandboxPendingUsageOverviewInternalDto

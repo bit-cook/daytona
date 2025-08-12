@@ -43,9 +43,9 @@ import { TypedConfigService } from '../../config/typed-config.service'
 import { WarmPool } from '../entities/warm-pool.entity'
 import { SandboxDto } from '../dto/sandbox.dto'
 import { isValidUuid } from '../../common/utils/uuid'
-import { InjectRedis } from '@nestjs-modules/ioredis'
-import Redis from 'ioredis'
 import { OrganizationUsageService } from '../../organization/services/organization-usage.service'
+import { InjectRedis } from '@nestjs-modules/ioredis'
+import { Redis } from 'ioredis'
 
 const DEFAULT_CPU = 1
 const DEFAULT_MEMORY = 1
@@ -99,38 +99,60 @@ export class SandboxService {
     }
 
     // validate usage quotas
-    // use optimistic quota guards to protect against race conditions to prevent quota abuse (not 100% correct when close to quota limits)
-    const usageOverview = await this.organizationUsageService.getSandboxUsageOverview(organization.id, excludeSandboxId)
+    // start by incrementing the pending usage
+    const {
+      cpuIncremented: pendingCpuIncremented,
+      memoryIncremented: pendingMemoryIncremented,
+      diskIncremented: pendingDiskIncremented,
+    } = await this.organizationUsageService.incrementPendingSandboxUsage(
+      organization.id,
+      cpu,
+      memory,
+      disk,
+      excludeSandboxId,
+    )
 
-    const concurrentCpuKey = `org:${organization.id}:sandbox-concurrent-cpu`
-    const concurrentCpu = await this.redis.incrby(concurrentCpuKey, cpu)
-    await this.redis.expire(concurrentCpuKey, 1)
+    // get the current usage overview
+    const usageOverview = await this.organizationUsageService.getSandboxUsageOverviewWithPending(
+      organization.id,
+      excludeSandboxId,
+    )
 
-    if (usageOverview.currentCpuUsage + concurrentCpu > organization.totalCpuQuota) {
-      throw new ForbiddenException(
-        `Total CPU quota exceeded (${usageOverview.currentCpuUsage + cpu} > ${organization.totalCpuQuota})`,
+    try {
+      this.logger.warn(
+        `=== validateOrganizationQuotas -> currentCpuUsage: ${usageOverview.currentCpuUsage}, pendingCpu: ${usageOverview.pendingCpuUsage}, result: ${usageOverview.currentCpuUsage + usageOverview.pendingCpuUsage}/${organization.totalCpuQuota}`,
       )
+
+      if (usageOverview.currentCpuUsage + usageOverview.pendingCpuUsage > organization.totalCpuQuota) {
+        throw new ForbiddenException('Total CPU quota exceeded')
+      }
+
+      if (usageOverview.currentMemoryUsage + usageOverview.pendingMemoryUsage > organization.totalMemoryQuota) {
+        throw new ForbiddenException('Total memory quota exceeded')
+      }
+
+      if (usageOverview.currentDiskUsage + usageOverview.pendingDiskUsage > organization.totalDiskQuota) {
+        throw new ForbiddenException('Total disk quota exceeded')
+      }
+    } catch (error) {
+      // rollback the pending usage
+      try {
+        await this.organizationUsageService.decrementPendingSandboxUsage(
+          organization.id,
+          pendingCpuIncremented ? cpu : undefined,
+          pendingMemoryIncremented ? memory : undefined,
+          pendingDiskIncremented ? disk : undefined,
+        )
+      } catch (error) {
+        this.logger.error(`Error rolling back pending usage: ${error}`)
+      }
+
+      this.logger.error('quota exceeded')
+
+      throw error
     }
 
-    const concurrentMemoryKey = `org:${organization.id}:sandbox-concurrent-memory`
-    const concurrentMemory = await this.redis.incrby(concurrentMemoryKey, memory)
-    await this.redis.expire(concurrentMemoryKey, 1)
-
-    if (usageOverview.currentMemoryUsage + concurrentMemory > organization.totalMemoryQuota) {
-      throw new ForbiddenException(
-        `Total memory quota exceeded (${usageOverview.currentMemoryUsage + memory}GB > ${organization.totalMemoryQuota}GB)`,
-      )
-    }
-
-    const concurrentDiskKey = `org:${organization.id}:sandbox-concurrent-disk`
-    const concurrentDisk = await this.redis.incrby(concurrentDiskKey, disk)
-    await this.redis.expire(concurrentDiskKey, 1)
-
-    if (usageOverview.currentDiskUsage + concurrentDisk > organization.totalDiskQuota) {
-      throw new ForbiddenException(
-        `Total disk quota exceeded (${usageOverview.currentDiskUsage + concurrentDisk}GB > ${organization.totalDiskQuota}GB)`,
-      )
-    }
+    this.logger.log('validation passed')
   }
 
   async archive(sandboxId: string): Promise<void> {
