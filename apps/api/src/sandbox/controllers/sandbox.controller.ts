@@ -23,7 +23,6 @@ import {
   Next,
   ParseBoolPipe,
 } from '@nestjs/common'
-import Redis from 'ioredis'
 import { CombinedAuthGuard } from '../../auth/combined-auth.guard'
 import { SandboxService } from '../services/sandbox.service'
 import { CreateSandboxDto } from '../dto/create-sandbox.dto'
@@ -42,9 +41,7 @@ import { RunnerService } from '../services/runner.service'
 import { SandboxState } from '../enums/sandbox-state.enum'
 import { Sandbox as SandboxEntity } from '../entities/sandbox.entity'
 import { ContentTypeInterceptor } from '../../common/interceptors/content-type.interceptors'
-import { Throttle } from '@nestjs/throttler'
 import { Runner } from '../entities/runner.entity'
-import { InjectRedis } from '@nestjs-modules/ioredis'
 import { Sandbox } from '../decorators/sandbox.decorator'
 import { SandboxAccessGuard } from '../guards/sandbox-access.guard'
 import { CustomHeaders } from '../../common/constants/header.constants'
@@ -65,6 +62,7 @@ import { SandboxStateUpdatedEvent } from '../events/sandbox-state-updated.event'
 import { Audit, MASKED_AUDIT_VALUE, TypedRequest } from '../../audit/decorators/audit.decorator'
 import { AuditAction } from '../../audit/enums/audit-action.enum'
 import { AuditTarget } from '../../audit/enums/audit-target.enum'
+// import { UpdateSandboxNetworkSettingsDto } from '../dto/update-sandbox-network-settings.dto'
 
 @ApiTags('sandbox')
 @Controller('sandbox')
@@ -76,7 +74,6 @@ export class SandboxController {
   private readonly logger = new Logger(SandboxController.name)
 
   constructor(
-    @InjectRedis() private readonly redis: Redis,
     private readonly runnerService: RunnerService,
     private readonly sandboxService: SandboxService,
     private readonly configService: TypedConfigService,
@@ -143,7 +140,6 @@ export class SandboxController {
     description: 'The sandbox has been successfully created.',
     type: SandboxDto,
   })
-  @Throttle({ default: { limit: 100 } })
   @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.WRITE_SANDBOXES])
   @Audit({
     action: AuditAction.CREATE,
@@ -169,6 +165,8 @@ export class SandboxController {
         autoDeleteInterval: req.body?.autoDeleteInterval,
         volumes: req.body?.volumes,
         buildInfo: req.body?.buildInfo,
+        networkBlockAll: req.body?.networkBlockAll,
+        networkAllowList: req.body?.networkAllowList,
       }),
     },
   })
@@ -249,7 +247,6 @@ export class SandboxController {
     status: 200,
     description: 'Sandbox has been deleted',
   })
-  @Throttle({ default: { limit: 100 } })
   @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.DELETE_SANDBOXES])
   @UseGuards(SandboxAccessGuard)
   @Audit({
@@ -281,7 +278,6 @@ export class SandboxController {
     description: 'Sandbox has been started or is being restored from archived state',
     type: SandboxDto,
   })
-  @Throttle({ default: { limit: 100 } })
   @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.WRITE_SANDBOXES])
   @UseGuards(SandboxAccessGuard)
   @Audit({
@@ -326,7 +322,6 @@ export class SandboxController {
     status: 200,
     description: 'Sandbox has been stopped',
   })
-  @Throttle({ default: { limit: 100 } })
   @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.WRITE_SANDBOXES])
   @UseGuards(SandboxAccessGuard)
   @Audit({
@@ -543,6 +538,45 @@ export class SandboxController {
     await this.sandboxService.setAutoDeleteInterval(sandboxId, interval)
   }
 
+  // TODO: Network settings endpoint will not be enabled for now
+  // @Post(':sandboxId/network-settings')
+  // @ApiOperation({
+  //   summary: 'Update sandbox network settings',
+  //   operationId: 'updateNetworkSettings',
+  // })
+  // @ApiParam({
+  //   name: 'sandboxId',
+  //   description: 'ID of the sandbox',
+  //   type: 'string',
+  // })
+  // @ApiResponse({
+  //   status: 200,
+  //   description: 'Network settings have been updated',
+  // })
+  // @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.WRITE_SANDBOXES])
+  // @UseGuards(SandboxAccessGuard)
+  // @Audit({
+  //   action: AuditAction.UPDATE_NETWORK_SETTINGS,
+  //   targetType: AuditTarget.SANDBOX,
+  //   targetIdFromRequest: (req) => req.params.sandboxId,
+  //   requestMetadata: {
+  //     body: (req: TypedRequest<UpdateSandboxNetworkSettingsDto>) => ({
+  //       networkBlockAll: req.body?.networkBlockAll,
+  //       networkAllowList: req.body?.networkAllowList,
+  //     }),
+  //   },
+  // })
+  // async updateNetworkSettings(
+  //   @Param('sandboxId') sandboxId: string,
+  //   @Body() networkSettings: UpdateSandboxNetworkSettingsDto,
+  // ): Promise<void> {
+  //   await this.sandboxService.updateNetworkSettings(
+  //     sandboxId,
+  //     networkSettings.networkBlockAll,
+  //     networkSettings.networkAllowList,
+  //   )
+  // }
+
   @Post(':sandboxId/archive')
   @HttpCode(200)
   @ApiOperation({
@@ -553,7 +587,6 @@ export class SandboxController {
     status: 200,
     description: 'Sandbox has been archived',
   })
-  @Throttle({ default: { limit: 100 } })
   @RequiredOrganizationResourcePermissions([OrganizationResourcePermission.WRITE_SANDBOXES])
   @UseGuards(SandboxAccessGuard)
   @Audit({

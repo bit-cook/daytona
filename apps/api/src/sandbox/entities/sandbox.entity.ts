@@ -91,6 +91,12 @@ export class Sandbox {
   @Column({ default: false })
   public: boolean
 
+  @Column({ default: false })
+  networkBlockAll: boolean
+
+  @Column({ nullable: true })
+  networkAllowList?: string
+
   @Column('jsonb', { nullable: true })
   labels: { [key: string]: string }
 
@@ -209,6 +215,12 @@ export class Sandbox {
           },
         ]
         this.backupErrorReason = null
+        if (this.desiredState === SandboxDesiredState.ARCHIVED) {
+          if (this.state === SandboxState.ARCHIVING || this.state === SandboxState.STOPPED) {
+            this.state = SandboxState.ARCHIVED
+            this.runnerId = null
+          }
+        }
         break
       }
     }
