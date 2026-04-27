@@ -8,12 +8,12 @@
     "generate:api-client": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": ["apiClient"],
+      "inputs": ["apiClient", "{workspaceRoot}/hack/java-client/postprocess.sh"],
       "outputs": ["{projectRoot}/src"],
       "options": {
         "commands": [
           "rm -rf {projectRoot}/src {projectRoot}/docs {projectRoot}/api",
-          "yarn run openapi-generator-cli generate --git-repo-id=daytona --git-user-id=daytonaio -i dist/apps/api/openapi.json -g java --additional-properties=groupId=io.daytona,artifactId=api-client,artifactVersion=$DEFAULT_PACKAGE_VERSION,apiPackage=io.daytona.api.client.api,modelPackage=io.daytona.api.client.model,invokerPackage=io.daytona.api.client,library=okhttp-gson,java8=true,hideGenerationTimestamp=true,useRuntimeException=true,disallowAdditionalPropertiesIfNotPresent=false -o {projectRoot}",
+          "yarn run openapi-generator-cli generate --git-repo-id=daytona --git-user-id=daytonaio -i dist/apps/api/openapi.json -g java --additional-properties=groupId=io.daytona,artifactId=api-client,artifactVersion=$DEFAULT_PACKAGE_VERSION,apiPackage=io.daytona.api.client.api,modelPackage=io.daytona.api.client.model,invokerPackage=io.daytona.api.client,library=okhttp-gson,java8=true,hideGenerationTimestamp=true,useRuntimeException=true,disallowAdditionalPropertiesIfNotPresent=false,enumUnknownDefaultCase=true -o {projectRoot}",
           "bash hack/java-client/postprocess.sh {projectRoot} api-client-java",
           "chmod +x {projectRoot}/gradlew && {projectRoot}/gradlew -p {projectRoot} publishToMavenLocal -q || true"
         ],
