@@ -4,7 +4,7 @@
  */
 
 import { AuditLogTable } from '@/components/AuditLogTable'
-import { PageContent, PageHeader, PageLayout, PageTitle } from '@/components/PageLayout'
+import { PageContent, PageFooter, PageHeader, PageLayout, PageTitle } from '@/components/PageLayout'
 import { RefreshSegmentedButton } from '@/components/RefreshSegmentedButton'
 import { DateRangePicker, QuickRangesConfig } from '@/components/ui/date-range-picker'
 import { DEFAULT_PAGE_SIZE } from '@/constants/Pagination'
@@ -219,26 +219,31 @@ const AuditLogs: React.FC = () => {
     [resetPagination],
   )
 
+  const hasFilters = Boolean(dateRange.from || dateRange.to)
+
+  const handleClearFilters = useCallback(() => {
+    setDateRange({ from: undefined, to: undefined })
+    resetPagination()
+  }, [resetPagination])
+
   return (
-    <PageLayout>
+    <PageLayout contained>
       <PageHeader>
         <PageTitle>Audit Logs</PageTitle>
       </PageHeader>
 
-      <PageContent size="full">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex gap-2 items-center">
-            <DateRangePicker
-              value={dateRange}
-              onChange={handleDateRangeChange}
-              quickRangesEnabled
-              quickRanges={AUDIT_LOG_QUICK_RANGES}
-              timeSelection
-              disabled={isLoading}
-            />
-          </div>
+      <PageContent size="full" className="overflow-hidden gap-3">
+        <div className="flex gap-2 flex-wrap justify-between">
+          <DateRangePicker
+            className="max-w-[380px] truncate"
+            value={dateRange}
+            onChange={handleDateRangeChange}
+            quickRangesEnabled
+            quickRanges={AUDIT_LOG_QUICK_RANGES}
+            timeSelection
+            disabled={isLoading}
+          />
           <RefreshSegmentedButton
-            className="ml-auto"
             value={refreshInterval}
             onChange={setRefreshInterval}
             onRefresh={refetch}
@@ -251,6 +256,8 @@ const AuditLogs: React.FC = () => {
           data={data.items}
           loading={isLoading}
           isRefetching={isRefetching}
+          hasFilters={hasFilters}
+          onClearFilters={handleClearFilters}
           pageCount={data.totalPages}
           totalItems={data.total}
           onPaginationChange={handlePaginationChange}
@@ -260,6 +267,7 @@ const AuditLogs: React.FC = () => {
           }}
         />
       </PageContent>
+      <PageFooter />
     </PageLayout>
   )
 }
