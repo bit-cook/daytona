@@ -3961,7 +3961,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "amount": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 0
                 },
                 "direction": {
                     "description": "up, down",

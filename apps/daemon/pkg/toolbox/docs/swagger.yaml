@@ -677,6 +677,8 @@ definitions:
   MouseScrollRequest:
     properties:
       amount:
+        default: 1
+        minimum: 0
         type: integer
       direction:
         description: up, down

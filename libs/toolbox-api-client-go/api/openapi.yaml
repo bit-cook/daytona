@@ -3388,6 +3388,7 @@ components:
         direction: direction
       properties:
         amount:
+          minimum: 0
           type: integer
         direction:
           description: "up, down"
