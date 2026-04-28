@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useRegions } from '@/hooks/useRegions'
 import { Sandbox } from '@daytona/api-client'
 import { SandboxInfoPanel } from './SandboxInfoPanel'
+import { SandboxFileSystemTab } from './SandboxFileSystemTab'
 import { SandboxLogsTab } from './SandboxLogsTab'
 import { SandboxMetricsTab } from './SandboxMetricsTab'
 import { SandboxSpendingTab } from './SandboxSpendingTab'
@@ -21,6 +22,7 @@ interface SandboxContentTabsProps {
   sandbox: Sandbox | undefined
   isLoading: boolean
   experimentsEnabled: boolean | undefined
+  filesystemEnabled: boolean | undefined
   tab: TabValue
   onTabChange: (tab: TabValue) => void
 }
@@ -29,6 +31,7 @@ export function SandboxContentTabs({
   sandbox,
   isLoading,
   experimentsEnabled,
+  filesystemEnabled,
   tab,
   onTabChange,
 }: SandboxContentTabsProps) {
@@ -69,6 +72,7 @@ export function SandboxContentTabs({
           </>
         )}
         <TabsTrigger value="terminal">Terminal</TabsTrigger>
+        {filesystemEnabled && <TabsTrigger value="filesystem">Filesystem</TabsTrigger>}
         <TabsTrigger value="vnc">VNC</TabsTrigger>
       </TabsList>
 
@@ -97,6 +101,14 @@ export function SandboxContentTabs({
       <TabsContent value="terminal" className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col overflow-hidden">
         <SandboxTerminalTab sandbox={sandbox} />
       </TabsContent>
+      {filesystemEnabled && (
+        <TabsContent
+          value="filesystem"
+          className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col overflow-hidden"
+        >
+          <SandboxFileSystemTab sandbox={sandbox} />
+        </TabsContent>
+      )}
       <TabsContent value="vnc" className="flex-1 min-h-0 m-0 data-[state=active]:flex flex-col overflow-hidden">
         <SandboxVncTab sandbox={sandbox} />
       </TabsContent>
