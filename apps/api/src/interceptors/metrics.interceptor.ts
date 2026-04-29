@@ -189,6 +189,9 @@ export class MetricsInterceptor implements NestInterceptor, OnApplicationShutdow
           case '/api/sandbox/:sandboxIdOrName/backup':
             this.captureCreateBackup(props, request.params.sandboxIdOrName)
             break
+          case '/api/sandbox/:sandboxIdOrName/recover':
+            this.captureRecoverSandbox(props, request.params.sandboxIdOrName, request.query?.skipStart === 'true')
+            break
           case '/api/sandbox/:sandboxIdOrName/snapshot':
             this.captureCreateSandboxSnapshot(props, request.params.sandboxIdOrName, request.body, response)
             break
@@ -665,6 +668,13 @@ export class MetricsInterceptor implements NestInterceptor, OnApplicationShutdow
   private captureCreateBackup(props: CommonCaptureProps, sandboxId: string) {
     this.capture('api_sandbox_backup_created', props, 'api_sandbox_backup_creation_failed', {
       sandbox_id: sandboxId,
+    })
+  }
+
+  private captureRecoverSandbox(props: CommonCaptureProps, sandboxId: string, skipStart: boolean) {
+    this.capture('api_sandbox_recovered', props, 'api_sandbox_recovery_failed', {
+      sandbox_id: sandboxId,
+      skip_start: skipStart,
     })
   }
 

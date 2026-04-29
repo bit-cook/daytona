@@ -445,6 +445,12 @@ export class SandboxController {
     description: 'ID or name of the sandbox',
     type: 'string',
   })
+  @ApiQuery({
+    name: 'skipStart',
+    required: false,
+    type: Boolean,
+    description: 'If true, the sandbox is left in STOPPED after recovery instead of being started.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Recovery initiated',
@@ -457,15 +463,21 @@ export class SandboxController {
     targetType: AuditTarget.SANDBOX,
     targetIdFromRequest: (req) => req.params.sandboxIdOrName,
     targetIdFromResult: (result: SandboxDto) => result?.id,
+    requestMetadata: {
+      query: (req) => ({
+        skipStart: req.query?.skipStart === 'true',
+      }),
+    },
   })
   async recoverSandbox(
     @IsOrganizationAuthContext() authContext: OrganizationAuthContext,
     @Param('sandboxIdOrName') sandboxIdOrName: string,
+    @Query('skipStart', new ParseBoolPipe({ optional: true })) skipStart?: boolean,
   ): Promise<SandboxDto> {
-    const recoveredSandbox = await this.sandboxService.recover(sandboxIdOrName, authContext.organization)
+    const recoveredSandbox = await this.sandboxService.recover(sandboxIdOrName, authContext.organization, skipStart)
     let sandboxDto = await this.sandboxService.toSandboxDto(recoveredSandbox)
 
-    if (sandboxDto.state !== SandboxState.STARTED) {
+    if (!skipStart && sandboxDto.state !== SandboxState.STARTED) {
       sandboxDto = await this.waitForSandboxStarted(sandboxDto, 30)
     }
 

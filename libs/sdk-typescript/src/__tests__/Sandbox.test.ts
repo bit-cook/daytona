@@ -130,7 +130,7 @@ describe('Sandbox', () => {
 
     await sandbox.recover(1)
 
-    expect(sandboxApi.recoverSandbox).toHaveBeenCalledWith('sb-1', undefined, { timeout: 1000 })
+    expect(sandboxApi.recoverSandbox).toHaveBeenCalledWith('sb-1', undefined, undefined, { timeout: 1000 })
     expect(sandbox.state).toBe('started')
   })
 

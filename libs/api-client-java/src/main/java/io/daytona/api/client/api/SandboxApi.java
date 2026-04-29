@@ -4039,6 +4039,7 @@ public class SandboxApi {
      * Build call for recoverSandbox
      * @param sandboxIdOrName ID or name of the sandbox (required)
      * @param xDaytonaOrganizationID Use with JWT to specify the organization ID (optional)
+     * @param skipStart If true, the sandbox is left in STOPPED after recovery instead of being started. (optional)
      * @param _callback Callback for upload/download progress
      * @return Call to execute
      * @throws ApiException If fail to serialize the request body object
@@ -4049,7 +4050,7 @@ public class SandboxApi {
         <tr><td> 200 </td><td> Recovery initiated </td><td>  -  </td></tr>
      </table>
      */
-    public okhttp3.Call recoverSandboxCall(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, final ApiCallback _callback) throws ApiException {
+    public okhttp3.Call recoverSandboxCall(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, @javax.annotation.Nullable Boolean skipStart, final ApiCallback _callback) throws ApiException {
         String basePath = null;
         // Operation Servers
         String[] localBasePaths = new String[] {  };
@@ -4074,6 +4075,10 @@ public class SandboxApi {
         Map<String, String> localVarHeaderParams = new HashMap<String, String>();
         Map<String, String> localVarCookieParams = new HashMap<String, String>();
         Map<String, Object> localVarFormParams = new HashMap<String, Object>();
+
+        if (skipStart != null) {
+            localVarQueryParams.addAll(localVarApiClient.parameterToPair("skipStart", skipStart));
+        }
 
         final String[] localVarAccepts = {
             "application/json"
@@ -4100,13 +4105,13 @@ public class SandboxApi {
     }
 
     @SuppressWarnings("rawtypes")
-    private okhttp3.Call recoverSandboxValidateBeforeCall(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, final ApiCallback _callback) throws ApiException {
+    private okhttp3.Call recoverSandboxValidateBeforeCall(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, @javax.annotation.Nullable Boolean skipStart, final ApiCallback _callback) throws ApiException {
         // verify the required parameter 'sandboxIdOrName' is set
         if (sandboxIdOrName == null) {
             throw new ApiException("Missing the required parameter 'sandboxIdOrName' when calling recoverSandbox(Async)");
         }
 
-        return recoverSandboxCall(sandboxIdOrName, xDaytonaOrganizationID, _callback);
+        return recoverSandboxCall(sandboxIdOrName, xDaytonaOrganizationID, skipStart, _callback);
 
     }
 
@@ -4115,6 +4120,7 @@ public class SandboxApi {
      * 
      * @param sandboxIdOrName ID or name of the sandbox (required)
      * @param xDaytonaOrganizationID Use with JWT to specify the organization ID (optional)
+     * @param skipStart If true, the sandbox is left in STOPPED after recovery instead of being started. (optional)
      * @return Sandbox
      * @throws ApiException If fail to call the API, e.g. server error or cannot deserialize the response body
      * @http.response.details
@@ -4124,8 +4130,8 @@ public class SandboxApi {
         <tr><td> 200 </td><td> Recovery initiated </td><td>  -  </td></tr>
      </table>
      */
-    public Sandbox recoverSandbox(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID) throws ApiException {
-        ApiResponse<Sandbox> localVarResp = recoverSandboxWithHttpInfo(sandboxIdOrName, xDaytonaOrganizationID);
+    public Sandbox recoverSandbox(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, @javax.annotation.Nullable Boolean skipStart) throws ApiException {
+        ApiResponse<Sandbox> localVarResp = recoverSandboxWithHttpInfo(sandboxIdOrName, xDaytonaOrganizationID, skipStart);
         return localVarResp.getData();
     }
 
@@ -4134,6 +4140,7 @@ public class SandboxApi {
      * 
      * @param sandboxIdOrName ID or name of the sandbox (required)
      * @param xDaytonaOrganizationID Use with JWT to specify the organization ID (optional)
+     * @param skipStart If true, the sandbox is left in STOPPED after recovery instead of being started. (optional)
      * @return ApiResponse&lt;Sandbox&gt;
      * @throws ApiException If fail to call the API, e.g. server error or cannot deserialize the response body
      * @http.response.details
@@ -4143,8 +4150,8 @@ public class SandboxApi {
         <tr><td> 200 </td><td> Recovery initiated </td><td>  -  </td></tr>
      </table>
      */
-    public ApiResponse<Sandbox> recoverSandboxWithHttpInfo(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID) throws ApiException {
-        okhttp3.Call localVarCall = recoverSandboxValidateBeforeCall(sandboxIdOrName, xDaytonaOrganizationID, null);
+    public ApiResponse<Sandbox> recoverSandboxWithHttpInfo(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, @javax.annotation.Nullable Boolean skipStart) throws ApiException {
+        okhttp3.Call localVarCall = recoverSandboxValidateBeforeCall(sandboxIdOrName, xDaytonaOrganizationID, skipStart, null);
         Type localVarReturnType = new TypeToken<Sandbox>(){}.getType();
         return localVarApiClient.execute(localVarCall, localVarReturnType);
     }
@@ -4154,6 +4161,7 @@ public class SandboxApi {
      * 
      * @param sandboxIdOrName ID or name of the sandbox (required)
      * @param xDaytonaOrganizationID Use with JWT to specify the organization ID (optional)
+     * @param skipStart If true, the sandbox is left in STOPPED after recovery instead of being started. (optional)
      * @param _callback The callback to be executed when the API call finishes
      * @return The request call
      * @throws ApiException If fail to process the API call, e.g. serializing the request body object
@@ -4164,9 +4172,9 @@ public class SandboxApi {
         <tr><td> 200 </td><td> Recovery initiated </td><td>  -  </td></tr>
      </table>
      */
-    public okhttp3.Call recoverSandboxAsync(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, final ApiCallback<Sandbox> _callback) throws ApiException {
+    public okhttp3.Call recoverSandboxAsync(@javax.annotation.Nonnull String sandboxIdOrName, @javax.annotation.Nullable String xDaytonaOrganizationID, @javax.annotation.Nullable Boolean skipStart, final ApiCallback<Sandbox> _callback) throws ApiException {
 
-        okhttp3.Call localVarCall = recoverSandboxValidateBeforeCall(sandboxIdOrName, xDaytonaOrganizationID, _callback);
+        okhttp3.Call localVarCall = recoverSandboxValidateBeforeCall(sandboxIdOrName, xDaytonaOrganizationID, skipStart, _callback);
         Type localVarReturnType = new TypeToken<Sandbox>(){}.getType();
         localVarApiClient.executeAsync(localVarCall, localVarReturnType, _callback);
         return localVarCall;
